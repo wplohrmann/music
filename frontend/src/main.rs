@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 // ID starts higher than 0 because we have a few starting todos by default
 static NEXT_ID: AtomicUsize = AtomicUsize::new(3);
+stylance::import_style!(style, "App.module.css");
 
 #[derive(Debug, Store, Serialize, Deserialize)]
 struct Todos {
@@ -160,7 +161,7 @@ fn TodoRow(
     view! {
         <li style:text-decoration=move || {
           if status.done() { "line-through" } else { Default::default() }
-        }>
+        } class={style::todo}>
 
             <p
                 class:hidden=move || editing.get()
