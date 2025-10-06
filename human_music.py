@@ -1,5 +1,7 @@
 import subprocess
+import matplotlib.pyplot as plt
 from tempfile import NamedTemporaryFile
+from scipy.signal import spectrogram
 import numpy as np
 
 import wave
@@ -8,12 +10,20 @@ import argparse
 SAMPLE_RATE = 44100  # Samples per second
 
 
-def apply_fade(wave, fade_time=0.005) -> np.ndarray:
-    n_fade = int(fade_time * SAMPLE_RATE)
-    fade_in = np.linspace(0, 1, n_fade)
-    fade_out = np.linspace(1, 0, n_fade)
+def sigmoid(t: np.ndarray, start: float, end: float, move_time: float) -> np.ndarray:
+    return start + (end - start) * (1 / (1 + np.exp(-t / move_time)))
+
+
+def apply_fade_in(wave, fade_time=0.01) -> np.ndarray:
+    n_fade = 3 * int(fade_time * SAMPLE_RATE)
+    t_in = np.arange(n_fade) / SAMPLE_RATE - 0.5 * fade_time
+    fade_in = sigmoid(t_in, 0, 1, fade_time)
     wave[:n_fade] *= fade_in
-    wave[-n_fade:] *= fade_out
+    # plt.subplot(211)
+    # plt.plot(wave)
+    # plt.subplot(212)
+    # plt.plot(new_wave)
+    # plt.show()
     return wave
 
 
@@ -26,7 +36,7 @@ class Note:
         )
         jitter = np.random.uniform(low=0, high=0.001)
         samples = self.generate(t + jitter)
-        return apply_fade(samples)
+        return apply_fade_in(samples)
 
     def generate(self, t: np.ndarray) -> np.ndarray:
         raise NotImplementedError
@@ -54,10 +64,9 @@ class BassDrum(Note):
         self.duration = duration
 
     def generate(self, t: np.ndarray) -> np.ndarray:
-        freq = np.linspace(self.f_init, self.f_final, len(t))
+        freq = sigmoid(t, self.f_init, self.f_final, 0.05)
 
         amp = np.exp(-2 * t)
-        # amp = get_envelope(t, t_in=0.1, t_out=0.05)
         return amp * np.sin(2 * np.pi * np.cumsum(freq) / SAMPLE_RATE)
 
 
@@ -81,18 +90,18 @@ def generate_music():
     notes = np.array([[0, 1, 0, -1] for _ in range(10)]).flatten()
     total_duration = len(notes) + 2
     samples = np.zeros(total_duration * SAMPLE_RATE)
-    duration = 1.5
-    for i, note in enumerate(notes):
-        if note == -1:
-            continue
-        frequency = (261.6 * 2) * (2 ** (note / 12))
-        sine = 0.1 * Stringed(duration, frequency).play()
-        start_time = i * 0.5
-        start_idx = int(start_time * SAMPLE_RATE)
-        end_idx = start_idx + len(sine)
-        if end_idx >= len(samples):
-            break
-        samples[start_idx:end_idx] += sine
+    # duration = 1.5
+    # for i, note in enumerate(notes):
+    #     if note == -1:
+    #         continue
+    #     frequency = (261.6 * 2) * (2 ** (note / 12))
+    #     sine = 0.1 * Stringed(duration, frequency).play()
+    #     start_time = i * 0.5
+    #     start_idx = int(start_time * SAMPLE_RATE)
+    #     end_idx = start_idx + len(sine)
+    #     if end_idx >= len(samples):
+    #         break
+    #     samples[start_idx:end_idx] += sine
 
     the_beat = np.zeros(len(samples))
     beat = [0, 0.8, 1, 1.8, 2, 3]
@@ -102,7 +111,7 @@ def generate_music():
         i = j % len(beat)
         num_bars = j // len(beat)
         if i < len(beat) - 1:
-            drum = BassDrum(f_init=100, f_final=40, duration=0.5).play()
+            drum = BassDrum(f_init=200, f_final=40, duration=2).play()
         else:
             drum = HiHat().play()
         start_time = 0.5 * (num_bars * 4 + beat[i])
@@ -128,16 +137,29 @@ def save(samples, output_file):
         wav_file.writeframes(samples.tobytes())
 
 
+def plot_spectrogram(samples: np.ndarray) -> None:
+    nperseg = int(0.5 * SAMPLE_RATE)
+    f, t, Sxx = spectrogram(samples, nperseg=nperseg, fs=SAMPLE_RATE)
+    plt.pcolormesh(t, f, Sxx)
+    plt.ylabel("Frequency [Hz]")
+    plt.xlabel("Time [sec]")
+    plt.show()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate a 2-second 440Hz sine wave.")
     parser.add_argument("--output_file", help="Output WAV file name", required=False)
     args = parser.parse_args()
     samples = generate_music()
-    # samples = Stringed(duration=1, frequency=440).play()
-    # samples = BassDrum(f_final=40, f_init=100, duration=0.5).play()
+    # plot_spectrogram(samples)
+    samples = Stringed(duration=1, frequency=440).play()
+    samples = BassDrum(f_final=40, f_init=100, duration=0.6).play()
     if args.output_file is None:
         output_file = NamedTemporaryFile(delete=False).name
     else:
         output_file: str = args.output_file
     save(samples, output_file)
-    subprocess.call(["afplay", output_file])
+    try:
+        subprocess.call(["afplay", output_file])
+    except KeyboardInterrupt:
+        pass
