@@ -19,6 +19,11 @@ def apply_fade_in(wave, fade_time=0.01) -> np.ndarray:
     wave[:n_fade] *= np.linspace(0, 1, n_fade)
     return wave
 
+def apply_fade_out(wave, fade_time=0.01) -> np.ndarray:
+    n_fade = int(fade_time * SAMPLE_RATE)
+    wave[-n_fade:] *= np.linspace(1, 0, n_fade)
+    return wave
+
 
 class Note:
     duration: float
@@ -150,9 +155,10 @@ def halloween():
 
     return samples
 
+scale = np.array([0, 1, 1.5, 2.5, 3.5, 4.5, 5.5, 6])
+
 def bass_line():
     np.random.seed(1)
-    scale = np.array([0, 1, 2, 2.5, 3.5, 4.5, 5.5, 6])
     jump_weight = np.array([3, 3, 5, 2, 1, 0, 0, 1])
     assert len(jump_weight) == len(scale)
     diffs = np.abs(np.arange(len(scale))[:, None] - np.arange(len(scale))[None, :])
@@ -203,8 +209,7 @@ def bass_line():
             2: 2,
             3: 3,
             }[i % 4])
-        if i % 4 == 0:
-            note_index = 0
+
         for duration in [4, 2, 2]:
             note_f = root * 2**(scale[note_index] / 6)
             note = bass(note_f, 1).play()
@@ -213,21 +218,34 @@ def bass_line():
             if end_idx >= len(samples):
                 break
             if i >= 4:
-                samples[start_idx:end_idx] += 0.2 * note
+                samples[start_idx:end_idx] += 0.5 * note
                 note_index = np.random.choice(len(scale), p=scaled_probs[note_index])
             start_time += duration * eighth
+    return samples
+
+def chords():
+    total_duration = 5
+    samples = np.zeros(total_duration * SAMPLE_RATE)
+    chord = [0, 2, 4]
+    root = 360.5
+    for note in chord:
+        note_f = root * 2**(scale[note] / 6)
+        s = apply_fade_in(Stringed(2, note_f, num_overtones=10).play(), 0.4)
+        s = apply_fade_out(s, 0.2)
+        end_idx = len(s)
+        samples[:end_idx] += s
     return samples
 
 
 
 
-def scale(samples) -> np.ndarray:
+def quantise(samples) -> np.ndarray:
     return (samples / np.abs(samples).max() * (2**15 - 1)).astype(np.int16)
 
 
 def save(samples, output_file):
     if samples.dtype != np.int16:
-        samples = scale(samples)
+        samples = quantise(samples)
     # plt.plot(samples)
     # plt.show()
     with wave.open(output_file, "w") as wav_file:
@@ -242,9 +260,10 @@ if __name__ == "__main__":
     parser.add_argument("--output_file", help="Output WAV file name", required=False)
     args = parser.parse_args()
     # samples = halloween()
-    samples=  bass_line()
+    # samples=  bass_line()
     # samples = Stringed(duration=1, frequency=440).play()
     # samples = BASS_DRUM
+    samples = chords()
     if args.output_file is None:
         output_file = NamedTemporaryFile(delete=False).name
     else:
