@@ -259,7 +259,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate a 2-second 440Hz sine wave.")
     parser.add_argument("--output_file", help="Output WAV file name", required=False)
     args = parser.parse_args()
-    # samples = halloween()
+    samples = halloween()
     # samples=  bass_line()
     # samples = Stringed(duration=1, frequency=440).play()
     # samples = BASS_DRUM
